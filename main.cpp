@@ -9,7 +9,7 @@
 #include <thread>
 #include <atomic>
 #include <fstream>
-#include <vector>  // Added this include
+#include <vector> 
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -21,7 +21,6 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-// UI Constants
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
 const int TOOLBAR_HEIGHT = 50;
@@ -30,11 +29,10 @@ const SDL_Color BUTTON_COLOR = {50, 50, 50, 255};
 const SDL_Color BUTTON_HOVER_COLOR = {70, 70, 70, 255};
 const SDL_Color BUTTON_TEXT_COLOR = {255, 255, 255, 255};
 
-// Video Constants
 const int TARGET_WIDTH = 1920;
 const int TARGET_HEIGHT = 1080;
 const int TARGET_FPS = 30;
-const int TARGET_BITRATE = 8000000; // 8 Mbps
+const int TARGET_BITRATE = 8000000;
 const char* TARGET_FORMAT = "mp4";
 
 struct Button {
@@ -94,7 +92,6 @@ bool initSDL(SDL_Window** window, SDL_Renderer** renderer) {
 bool finalizeRecording(RecordingContext& ctx) {
     if (!ctx.isInitialized) return false;
 
-    // Create output context
     const AVOutputFormat* outputFormat = av_guess_format("mp4", nullptr, nullptr);
     if (!outputFormat) {
         std::cerr << "Could not find MP4 output format\n";
@@ -131,7 +128,6 @@ bool finalizeRecording(RecordingContext& ctx) {
         return false;
     }
 
-    // Process all stored frames
     size_t frameSize = av_image_get_buffer_size(ctx.videoCodecContext->pix_fmt,
                                               ctx.videoCodecContext->width,
                                               ctx.videoCodecContext->height, 1);
@@ -140,7 +136,6 @@ bool finalizeRecording(RecordingContext& ctx) {
     for (size_t i = 0; i < frameCount; i++) {
         const uint8_t* frameData = ctx.frameBuffer.data() + i * frameSize;
         
-        // Copy frame data to AVFrame
         av_image_fill_arrays(ctx.videoFrame->data, ctx.videoFrame->linesize,
                            frameData, ctx.videoCodecContext->pix_fmt,
                            ctx.videoCodecContext->width, ctx.videoCodecContext->height, 1);
@@ -172,7 +167,6 @@ bool finalizeRecording(RecordingContext& ctx) {
         av_packet_free(&pkt);
     }
 
-    // Flush encoder
     AVPacket* pkt = av_packet_alloc();
     avcodec_send_frame(ctx.videoCodecContext, nullptr);
     while (avcodec_receive_packet(ctx.videoCodecContext, pkt) >= 0) {
@@ -227,7 +221,6 @@ bool initRecording(RecordingContext& ctx, int width, int height) {
     ctx.isInitialized = false;
     ctx.frameBuffer.clear();
 
-    // Initialize codec and conversion context
     const AVCodec* videoCodec = avcodec_find_encoder(AV_CODEC_ID_H264);
     if (!videoCodec) {
         std::cerr << "H.264 codec not found\n";
@@ -284,7 +277,6 @@ bool initRecording(RecordingContext& ctx, int width, int height) {
 void writeFrame(RecordingContext& ctx, const uint8_t* data, int width, int height) {
     if (!ctx.isRecording || !ctx.isInitialized) return;
 
-    // Convert frame to YUV420P
     const uint8_t* srcData[1] = { data };
     int srcLinesize[1] = { width * 3 };
     
@@ -293,7 +285,6 @@ void writeFrame(RecordingContext& ctx, const uint8_t* data, int width, int heigh
 
     ctx.videoFrame->pts = ctx.videoFrameNumber++;
 
-    // Store the frame data in memory
     size_t frameSize = av_image_get_buffer_size(ctx.videoCodecContext->pix_fmt, 
                                               ctx.videoCodecContext->width, 
                                               ctx.videoCodecContext->height, 1);
@@ -311,10 +302,8 @@ void writeFrame(RecordingContext& ctx, const uint8_t* data, int width, int heigh
 void cleanupRecording(RecordingContext& ctx) {
     if (!ctx.isInitialized) return;
 
-    // First finalize the recording
     finalizeRecording(ctx);
 
-    // Then clean up resources
     if (ctx.videoFrame) av_frame_free(&ctx.videoFrame);
     if (ctx.swsContext) sws_freeContext(ctx.swsContext);
     if (ctx.videoCodecContext) avcodec_free_context(&ctx.videoCodecContext);
@@ -412,7 +401,6 @@ int main(int argc, char* argv[]) {
     bool running = true;
     SDL_Event event;
 
-    // Timing control for consistent frame rate
     auto lastFrameTime = std::chrono::steady_clock::now();
     const std::chrono::milliseconds frameDuration(1000 / TARGET_FPS);
 
@@ -420,7 +408,6 @@ int main(int argc, char* argv[]) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = now - lastFrameTime;
         
-        // Process events
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 running = false;
@@ -465,11 +452,10 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Capture screen
+
         XImage* img = XGetImage(display, root, x, y, width, height, AllPlanes, ZPixmap);
         if (img) {
             if (img->bits_per_pixel == 32) {
-                // For 32bpp, we need to determine if it's ARGB or BGRA
                 bool isARGB = (img->red_mask == 0xff0000 && 
                             img->green_mask == 0xff00 && 
                             img->blue_mask == 0xff);
@@ -479,11 +465,9 @@ int main(int argc, char* argv[]) {
                             img->red_mask == 0xff);
                 
                 if (isARGB || isBGRA) {
-                    // Update texture with correct format
                     SDL_UpdateTexture(texture, nullptr, img->data, img->bytes_per_line);
                     
                     if (recordingContext.isRecording) {
-                        // Convert to BGR24 for FFmpeg
                         uint8_t* bgrData = new uint8_t[width * height * 3];
                         for (int y = 0; y < height; y++) {
                             for (int x = 0; x < width; x++) {
@@ -505,7 +489,6 @@ int main(int argc, char* argv[]) {
                     std::cerr << "Unsupported 32bpp pixel format\n";
                 }
             } else if (img->bits_per_pixel == 24) {
-                // Directly use 24bpp data
                 SDL_UpdateTexture(texture, nullptr, img->data, img->bytes_per_line);
                 if (recordingContext.isRecording) {
                     writeFrame(recordingContext, (uint8_t*)img->data, width, height);
@@ -516,7 +499,6 @@ int main(int argc, char* argv[]) {
             XDestroyImage(img);
         }
 
-        // Render UI
         SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
         SDL_RenderClear(renderer);
 
@@ -550,7 +532,6 @@ int main(int argc, char* argv[]) {
 
         SDL_RenderPresent(renderer);
 
-        // Frame rate control
         auto processingTime = std::chrono::steady_clock::now() - now;
         if (processingTime < frameDuration) {
             std::this_thread::sleep_for(frameDuration - processingTime);
